@@ -1,31 +1,41 @@
-import requests
-import bs4
-import time
-import datetime
+# import shit you need
 from IPython import embed
+import bs4
+import datetime
+import requests
+import subprocess
+import time
 
-
-# Good test URL: https://dcurt.is/
-
-#  blog_url = raw_input('Blog url >> ')
+# URL of blog to be scraped
 blog_url = 'https://dcurt.is/'
 
+# list for holding article key-value info defined in `d`, L.37
 dict_list = []
+
+# list for determining oldest posts year, see L74
 year_list = []
 
-# get the html
-r = requests.get(blog_url)
-html = r.content
-soup = bs4.BeautifulSoup(html, "html.parser")
+# define a function for access clipboard
+# source: http://www.macdrifter.com/2011/12/python-and-the-mac-clipboard.html
 
-# Check if the blog spans multiple pages.
-last_one = soup.findAll('span', {'class': 'last'})
+def setClipboardData(data):
+ p = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
+ p.stdin.write(data)
 
-# function for getting article info into usable dicts / lists
+
+ retcode = p.wait()
+# define a function for getting the blog html in a soup object
+def cook_soup(url):
+    r = requests.get(url)
+    html = r.content
+    soup = bs4.BeautifulSoup(html, "html.parser")
+    return soup
+
+
+# define function for extracting article info and dumping into dicts / lists
 def parse_info(articles):
     for article in articles:
         try:
-            # information for each article
             article_title = article('a')[0].getText().encode('utf-8')
             datestring = article('time')[0].get('datetime').encode('utf-8')
             new = datetime.datetime.strptime(datestring, "%Y-%m-%d")
@@ -45,35 +55,42 @@ def parse_info(articles):
         except Exception as e:
             pass
 
+
+# Check if the blog spans multiple pages.
+soup = cook_soup(blog_url)
+last_one = soup.findAll('span', {'class': 'last'})
+
 # If it doesn't just grab the info from the first page.
 if not last_one:
-    print "you're in the not loop"
     articles = soup.findAll('article', {'class': 'post user_show'})
     parse_info(articles)
 
-# TODO: This loop is duplicating page 22, skipping 23, and getting 24.  WHY
-else:
+# TODO: This loop is duplicating page 22, skipping 23, and getting 24.
+#   1. Check `last_one`--make sure it's the last page. 
+#   2.
+else: 
     page_count = int(last_one[0]('a')[0].get('href').encode('utf-8').split('/')[2])
     alist = []
     for number in range(1, page_count + 1):  # include the last page
-        time.sleep(1)  # don't generate too many requests too quickly
         full_url = blog_url + "/page/{}".format(number)
-        r = requests.get(full_url)
-        html = r.content
-        soup = bs4.BeautifulSoup(html, "html.parser")
+        soup = cook_soup(full_url)
         articles = soup.findAll('article', {'class': 'post user_show'})
-        alist.append(articles)
+        alist.append(articles) # add page's article set to list--2D array
+        time.sleep(1)  # don't generate too many requests too quickly
+
+
     for articles in alist:
         parse_info(articles)
 
+embed()
 # Loop for appropriate number of headings  to determine number of year headings
-
-
 current_year = datetime.datetime.now().year
 oldest_post_year = sorted(year_list)[0]
 year_count = current_year - oldest_post_year
 
 
+
+#  output = "Results copied to system clipboard" TODO: Make this work?
 output = \
 """=============================================================================
 || Here's your archive.  You can copy/paste the output below into a new post:
@@ -85,6 +102,5 @@ for number in range(0, year_count+1):  # need to include the current year, so ex
     for d in dict_list:
         if d['year'] == (current_year - number):
             print d['link'] + "  " + "*(" + d['date'] + ")*"
-
 
 
